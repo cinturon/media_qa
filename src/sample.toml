@@ -1,0 +1,11 @@
+[profiles.shorts]
+extension = "mp4"
+width = 1080
+height = 1920
+require_audio = true
+
+[profiles.youtube]
+extension = "mp4"
+width = 1920
+height = 1080
+require_audio = true
