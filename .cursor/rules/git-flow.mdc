@@ -1,0 +1,69 @@
+---
+alwaysApply: true
+---
+# Git-Flow Branching
+
+Use [git-flow](https://nvie.com/posts/a-successful-git-branching-model/) for all ticket work.
+
+## Permanent Branches
+
+- `main` — production-ready code only
+- `develop` — integration branch for the next release
+
+## Branch Types
+
+| Type | Branch from | Merge into | Use for |
+|------|-------------|------------|---------|
+| `feature/` | `develop` | `develop` | New work, enhancements |
+| `bugfix/` | `develop` | `develop` | Non-urgent fixes |
+| `release/` | `develop` | `main` + `develop` | Release prep |
+| `hotfix/` | `main` | `main` + `develop` | Urgent production fixes |
+
+## Opening a Ticket
+
+1. Update the base branch: `git checkout develop && git pull`
+2. Create a branch named after the ticket:
+   - `feature/<ticket-id>-<short-description>` — new work
+   - `bugfix/<ticket-id>-<short-description>` — fixes
+   - `hotfix/<ticket-id>-<short-description>` — urgent production fixes (branch from `main`)
+3. Do all ticket work on that branch; never commit directly to `main` or `develop`
+
+```bash
+# Example: opening ticket ANSI-42
+git checkout develop && git pull
+git checkout -b feature/ANSI-42-add-color-palette
+```
+
+## Closing a Ticket
+
+1. Push the branch and open a PR targeting the correct base:
+   - `feature/` and `bugfix/` → `develop`
+   - `hotfix/` → `main` (then back-merge to `develop`)
+2. **Merge the PR automatically** — do not leave feature PRs open waiting for manual merge. After the PR is created and checks pass (or immediately if there are no required checks), merge it:
+   ```bash
+   gh pr merge --squash --delete-branch
+   ```
+   Use `--merge` instead of `--squash` only if the repo convention requires a merge commit. Never force-merge if checks are failing; fix or report the blocker first.
+3. Sync local `develop` (or `main` for hotfixes) and delete the local feature branch
+4. Move the Linear ticket to **Done** only after the PR is merged
+
+```bash
+# Example: ship a feature ticket end-to-end
+git push -u origin HEAD
+gh pr create --base develop --title "..." --body "..."
+gh pr merge --squash --delete-branch
+git checkout develop && git pull
+git branch -d feature/ANSI-42-add-color-palette
+```
+
+## Release Flow
+
+1. `git checkout -b release/x.y.z develop`
+2. Bump version, fix release-only issues, tag on `main` after merge
+3. Merge `release/x.y.z` into both `main` and `develop`
+
+## Rules
+
+- Never force-push `main` or `develop`
+- Keep branch names lowercase with hyphens; include ticket ID when available
+- One ticket = one branch; do not mix unrelated work
