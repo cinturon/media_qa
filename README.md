@@ -25,8 +25,41 @@ cargo run -- checklist --profile youtube
 | `probe <file>` | Run the QC pipeline on one file |
 | `checklist --profile <name>` | Print a client-ready delivery checklist |
 | `diff <before.json> <after.json>` | Compare two saved QC runs |
-| `serve` | Start a read-only dashboard API over saved reports |
+| `serve` | Start the studio API (auth, workspaces, uploads, jobs, billing) |
 | `watch <folder>` | Watch a drop folder and QC new files automatically |
+
+## Studio API (JIB-349+)
+
+Start the multi-tenant studio API:
+
+```bash
+cargo run -- serve --port 8787
+```
+
+Demo credentials are seeded in `.mediaqa/studio/studio.json`:
+
+- API token: `demo-token-change-me`
+- Session token: `sess_operator-mediaqa-local_demo-studio`
+
+Key endpoints (requires `Authorization: Bearer <session-token>` unless noted):
+
+- `POST /auth/login` — exchange API token for session
+- `GET /workspaces`, `POST /workspaces/switch`
+- `POST /uploads`, `POST /jobs`, `GET /jobs/{id}`
+- `GET /usage`, `GET /plans`, `POST /invites`
+- `GET /admin/overview`, `GET /experiments/pricing`
+
+## Desktop operator station (JIB-357+)
+
+The Tauri desktop app lives under `desktop/`. See [desktop/PACKAGING.md](desktop/PACKAGING.md).
+
+```bash
+# Terminal 1: studio API
+cargo run -- serve
+
+# Terminal 2: desktop app (requires Tauri CLI)
+cd desktop/src-tauri && cargo tauri dev
+```
 
 ## Useful flags
 

@@ -1,0 +1,32 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Media QA Studio",
+  "version": "0.1.0",
+  "identifier": "studio.mediaqa.desktop",
+  "build": {
+    "frontendDist": "../ui"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Media QA Studio",
+        "width": 1180,
+        "height": 820,
+        "resizable": true
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/icon.png"
+    ],
+    "category": "Video",
+    "shortDescription": "Media delivery QC operator station",
+    "longDescription": "Desktop operator station for Media QA Studio delivery checks."
+  }
+}
