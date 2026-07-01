@@ -1,0 +1,25 @@
+Intentionally corrupted media samples for decoder/parser testing.
+
+These files may fail to open, partially decode, or produce artifacts.
+
+test_video_exact_1920x1080_truncate_50.mp4: truncate_50
+test_video_exact_1920x1080_truncate_90.mp4: truncate_90
+test_video_exact_1920x1080_zero_header.mp4: zero_header
+test_video_exact_1920x1080_flip_middle.mp4: flip_middle
+test_video_exact_1920x1080_zero_tail.mp4: zero_tail
+test_video_exact_1920x1080_random_header.mp4: random_header
+test_video_exact_1920x1080_holes.mp4: holes
+test_video_1920x1080_30s_truncate_50.mp4: truncate_50
+test_video_1920x1080_30s_truncate_90.mp4: truncate_90
+test_video_1920x1080_30s_zero_header.mp4: zero_header
+test_video_1920x1080_30s_flip_middle.mp4: flip_middle
+test_video_1920x1080_30s_zero_tail.mp4: zero_tail
+test_video_1920x1080_30s_random_header.mp4: random_header
+test_video_1920x1080_30s_holes.mp4: holes
+caption_sidecar_test_truncate_50.mp4: truncate_50
+caption_sidecar_test_truncate_90.mp4: truncate_90
+caption_sidecar_test_zero_header.mp4: zero_header
+caption_sidecar_test_flip_middle.mp4: flip_middle
+caption_sidecar_test_zero_tail.mp4: zero_tail
+caption_sidecar_test_random_header.mp4: random_header
+caption_sidecar_test_holes.mp4: holes

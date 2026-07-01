@@ -16,8 +16,6 @@ mediaqa = { path = "../.." }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tauri = { version = "2", features = [] }
-ureq = { version = "2", features = ["json"] }
-time = { version = "=0.3.36", default-features = false, features = ["parsing", "formatting"] }
 
 [features]
 default = ["custom-protocol"]

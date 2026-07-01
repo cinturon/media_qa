@@ -14,6 +14,7 @@ cargo build
 cargo run -- check examples --profile youtube
 cargo run -- check examples --profile youtube --json
 cargo run -- check examples --profile youtube --html report.html --save
+cargo run -- watch ~/exports/incoming --profile youtube --scan-existing
 cargo run -- checklist --profile youtube
 ```
 
@@ -26,7 +27,7 @@ cargo run -- checklist --profile youtube
 | `checklist --profile <name>` | Print a client-ready delivery checklist |
 | `diff <before.json> <after.json>` | Compare two saved QC runs |
 | `serve` | Start the studio API (auth, workspaces, uploads, jobs, billing) |
-| `watch <folder>` | Watch a drop folder and QC new files automatically |
+| `watch <folder>` | Watch a drop folder and QC new media when exports finish copying |
 
 ## Studio API (JIB-349+)
 

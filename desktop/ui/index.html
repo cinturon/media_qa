@@ -4,59 +4,436 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Media QA Studio</title>
+    <link rel="icon" type="image/png" href="favicon.png" />
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
-    <header>
-      <h1>Media QA Studio</h1>
-      <p class="subtitle">Operator desk for delivery QC</p>
-    </header>
+    <aside class="sidebar">
+      <div class="brand">
+        <h1>Media QA Studio</h1>
+        <p>Delivery QC operator desk</p>
+      </div>
 
-    <nav class="steps">
-      <button class="step active" data-step="login">1. Sign in</button>
-      <button class="step" data-step="intake">2. Intake</button>
-      <button class="step" data-step="queue">3. Queue</button>
-      <button class="step" data-step="results">4. Results</button>
-    </nav>
+      <ol class="workflow" id="workflow-steps">
+        <li class="workflow-step active" data-step="profiles">
+          <span class="step-num">1</span>
+          <span class="step-label">Profiles</span>
+        </li>
+        <li class="workflow-step" data-step="check">
+          <span class="step-num">2</span>
+          <span class="step-label">Check media</span>
+        </li>
+        <li class="workflow-step locked" data-step="results">
+          <span class="step-num">3</span>
+          <span class="step-label">Review results</span>
+        </li>
+      </ol>
+    </aside>
 
-    <main>
-      <section id="login" class="panel active">
-        <h2>Sign in</h2>
-        <label>API token <input id="api-token" value="demo-token-change-me" /></label>
-        <button id="login-btn">Sign in</button>
-        <label>Workspace
-          <select id="workspace-select"></select>
-        </label>
-        <button id="switch-workspace-btn">Switch workspace</button>
-        <div id="entitlements" class="card"></div>
-        <div id="pricing-variant" class="card muted"></div>
+    <main class="workspace">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow" id="screen-eyebrow">Step 1 of 3</p>
+          <h2 id="screen-title">Delivery profiles</h2>
+        </div>
+        <p class="topbar-hint" id="screen-hint">
+          Choose a built-in spec or create a custom profile for your client.
+        </p>
+      </header>
+
+      <!-- Step 1: Profiles -->
+      <section id="profiles" class="screen active">
+        <div class="card">
+          <h3>Delivery profiles</h3>
+          <p id="profile-selection-summary" class="profile-selection-summary muted">
+            Loading profiles…
+          </p>
+          <p class="field-help">
+            Click profiles to choose which specs are used for QC checks. Multiple selections are allowed.
+          </p>
+          <div id="profile-library" class="profile-library"></div>
+        </div>
+
+        <div class="card profile-create-card">
+          <h3>Create a profile</h3>
+          <p class="field-help">
+            Define delivery rules directly, or optionally start from an existing profile and override what you need.
+          </p>
+
+          <div class="profile-form-grid">
+            <label class="field">
+              <span>Profile ID</span>
+              <input
+                id="new-profile-name"
+                placeholder="e.g. acme_youtube"
+                autocomplete="off"
+              />
+            </label>
+
+            <div class="field profile-template-field hidden" id="new-profile-template-field">
+              <span>Based on</span>
+              <select id="new-profile-inherits"></select>
+            </div>
+
+            <label class="field">
+              <span>Width</span>
+              <input id="new-profile-width" type="number" min="1" value="1920" />
+            </label>
+
+            <label class="field">
+              <span>Height</span>
+              <input id="new-profile-height" type="number" min="1" value="1080" />
+            </label>
+
+            <label class="field">
+              <span>Container</span>
+              <select id="new-profile-extension">
+                <option value="mp4" selected>mp4</option>
+                <option value="mov">mov</option>
+                <option value="mkv">mkv</option>
+              </select>
+            </label>
+
+            <label class="field">
+              <span>Max duration (seconds)</span>
+              <input
+                id="new-profile-max-duration"
+                type="number"
+                min="0"
+                step="0.1"
+                placeholder="Optional"
+              />
+            </label>
+
+            <label class="field">
+              <span>Min duration (seconds)</span>
+              <input
+                id="new-profile-min-duration"
+                type="number"
+                min="0"
+                step="0.1"
+                value="1"
+              />
+            </label>
+          </div>
+
+          <div class="profile-checkboxes">
+            <label class="checkbox-field">
+              <input id="new-profile-use-template" type="checkbox" />
+              <span>Base on existing profile</span>
+            </label>
+            <label class="checkbox-field">
+              <input id="new-profile-require-audio" type="checkbox" checked />
+              <span>Require audio</span>
+            </label>
+            <label class="checkbox-field">
+              <input id="new-profile-require-captions" type="checkbox" />
+              <span>Require captions sidecar</span>
+            </label>
+            <label class="checkbox-field">
+              <input id="new-profile-require-thumbnail" type="checkbox" />
+              <span>Require thumbnail</span>
+            </label>
+          </div>
+
+          <details class="profile-form-section" open>
+            <summary>Video</summary>
+            <div class="profile-form-grid">
+              <label class="field">
+                <span>Video codec</span>
+                <input
+                  id="new-profile-video-codec"
+                  placeholder="e.g. h264"
+                  autocomplete="off"
+                />
+              </label>
+
+              <label class="field">
+                <span>Frame rate (fps)</span>
+                <input
+                  id="new-profile-frame-rate"
+                  type="number"
+                  min="0"
+                  step="0.001"
+                  placeholder="Optional"
+                />
+              </label>
+
+              <label class="field">
+                <span>Frame rate tolerance</span>
+                <input
+                  id="new-profile-frame-rate-tolerance"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value="0.05"
+                />
+              </label>
+
+              <label class="field">
+                <span>Min video bitrate (kbps)</span>
+                <input
+                  id="new-profile-min-video-bitrate"
+                  type="number"
+                  min="0"
+                  step="1"
+                  placeholder="Optional"
+                />
+              </label>
+
+              <label class="field">
+                <span>Max video bitrate (kbps)</span>
+                <input
+                  id="new-profile-max-video-bitrate"
+                  type="number"
+                  min="0"
+                  step="1"
+                  placeholder="Optional"
+                />
+              </label>
+            </div>
+          </details>
+
+          <details class="profile-form-section">
+            <summary>Audio</summary>
+            <div class="profile-form-grid">
+              <label class="field">
+                <span>Audio codec</span>
+                <input
+                  id="new-profile-audio-codec"
+                  placeholder="e.g. aac"
+                  autocomplete="off"
+                />
+              </label>
+
+              <label class="field">
+                <span>Sample rate (Hz)</span>
+                <input
+                  id="new-profile-audio-sample-rate"
+                  type="number"
+                  min="0"
+                  step="1"
+                  placeholder="Optional"
+                />
+              </label>
+
+              <label class="field">
+                <span>Channels</span>
+                <input
+                  id="new-profile-audio-channels"
+                  type="number"
+                  min="0"
+                  step="1"
+                  placeholder="Optional"
+                />
+              </label>
+
+              <label class="field">
+                <span>Max silence (seconds)</span>
+                <input
+                  id="new-profile-max-silence"
+                  type="number"
+                  min="0"
+                  step="0.1"
+                  value="2"
+                />
+              </label>
+
+              <label class="field">
+                <span>Min mean volume (dB)</span>
+                <input
+                  id="new-profile-min-mean-volume"
+                  type="number"
+                  step="0.1"
+                  value="-50"
+                />
+              </label>
+            </div>
+          </details>
+
+          <details class="profile-form-section">
+            <summary>Loudness &amp; file limits</summary>
+            <div class="profile-form-grid">
+              <label class="field">
+                <span>Max integrated LUFS</span>
+                <input
+                  id="new-profile-max-lufs"
+                  type="number"
+                  step="0.1"
+                  placeholder="Optional"
+                />
+              </label>
+
+              <label class="field">
+                <span>Max true peak (dB)</span>
+                <input
+                  id="new-profile-max-true-peak"
+                  type="number"
+                  step="0.1"
+                  placeholder="Optional"
+                />
+              </label>
+
+              <label class="field">
+                <span>Max file size (MB)</span>
+                <input
+                  id="new-profile-max-file-size"
+                  type="number"
+                  min="0"
+                  step="1"
+                  placeholder="Optional"
+                />
+              </label>
+            </div>
+          </details>
+
+          <div class="actions">
+            <button type="button" id="create-profile-btn" class="primary">
+              Save profile
+            </button>
+            <button type="button" id="continue-to-check-btn" class="secondary">
+              Continue to check media →
+            </button>
+          </div>
+          <p id="profile-status" class="status-line muted" role="status"></p>
+        </div>
       </section>
 
-      <section id="intake" class="panel">
-        <h2>Intake</h2>
-        <label>Folder or file path <input id="qc-path" placeholder="/path/to/export" /></label>
-        <label>Profile
-          <select id="profile-select">
-            <option value="youtube">youtube</option>
-            <option value="shorts">shorts</option>
-          </select>
-        </label>
-        <button id="run-local-btn">Run local QC</button>
-        <button id="queue-remote-btn">Queue remote job (offline)</button>
+      <!-- Step 2: Check -->
+      <section id="check" class="screen">
+        <div class="card">
+          <h3>Run a delivery check</h3>
+          <p class="field-help">
+            Point at a file or folder of exports. We'll scan, probe with ffprobe,
+            and validate against your profile rules.
+          </p>
+
+          <label class="field">
+            <span>Export path</span>
+            <input
+              id="qc-path"
+              placeholder="e.g. /Users/you/exports/batch-0421"
+            />
+          </label>
+
+          <div class="field">
+            <span>Delivery profiles</span>
+            <p class="field-help">These profiles will be used when you run QC or watch a folder.</p>
+            <div id="profile-selected-chips" class="profile-selected-chips"></div>
+          </div>
+          <p class="field-help">
+            <button type="button" id="go-profiles-btn" class="text-btn inline-link">
+              Change profile selection →
+            </button>
+          </p>
+
+          <div class="actions">
+            <button type="button" id="run-local-btn" class="primary large">
+              Run QC check
+            </button>
+            <button type="button" id="back-to-profiles-btn" class="secondary">
+              ← Back to profiles
+            </button>
+          </div>
+          <p id="check-status" class="status-line muted" role="status"></p>
+        </div>
+
+        <div class="card watch-card">
+          <div class="watch-card-header">
+            <div>
+              <h3>Watch folder</h3>
+              <p class="field-help">
+                Automatically QC new exports when they finish copying into a drop folder.
+              </p>
+            </div>
+            <span id="watch-pill" class="watch-pill muted">Inactive</span>
+          </div>
+
+          <label class="field">
+            <span>Drop folder</span>
+            <input
+              id="watch-path"
+              placeholder="e.g. /Users/you/exports/incoming"
+            />
+          </label>
+
+          <div class="watch-options">
+            <label class="field compact">
+              <span>Debounce (seconds)</span>
+              <input id="watch-debounce" type="number" min="1" max="120" value="5" />
+            </label>
+            <label class="checkbox-field">
+              <input id="watch-scan-existing" type="checkbox" />
+              <span>QC existing files on start</span>
+            </label>
+          </div>
+
+          <p class="field-help">
+            Uses the delivery profiles selected above. Results open automatically when a file is checked.
+          </p>
+
+          <div class="actions">
+            <button type="button" id="start-watch-btn" class="secondary">
+              Start watching
+            </button>
+            <button type="button" id="stop-watch-btn" class="secondary" disabled>
+              Stop watching
+            </button>
+          </div>
+
+          <p id="watch-status" class="status-line muted" role="status"></p>
+          <ul id="watch-activity" class="watch-activity"></ul>
+        </div>
       </section>
 
-      <section id="queue" class="panel">
-        <h2>Queue</h2>
-        <button id="sync-queue-btn">Sync offline queue</button>
-        <ul id="offline-queue"></ul>
-      </section>
+      <!-- Step 3: Results -->
+      <section id="results" class="screen">
+        <div id="results-empty" class="card empty-state">
+          <h3>No results yet</h3>
+          <p>Run a check on step 2 to see findings and fix suggestions here.</p>
+          <button type="button" id="go-check-btn" class="primary">Go to check media</button>
+        </div>
 
-      <section id="results" class="panel">
-        <h2>Review</h2>
-        <div id="upgrade-banner" class="banner hidden"></div>
-        <pre id="results-output">Run a check to see findings, review state, and fix suggestions.</pre>
+        <div id="results-content" class="hidden">
+          <div id="profile-results-tabs" class="profile-results-tabs hidden" role="tablist" aria-label="Results by profile"></div>
+          <div id="results-verdict" class="results-verdict" role="status"></div>
+          <div id="results-summary" class="results-summary"></div>
+          <div id="batch-findings" class="batch-findings hidden"></div>
+          <div class="results-toolbar card">
+            <div class="results-filters" id="results-filters" role="tablist" aria-label="Filter results"></div>
+            <p id="results-filter-meta" class="results-filter-meta muted"></p>
+          </div>
+          <div id="file-results" class="results-file-list"></div>
+        </div>
+
+        <div class="actions sticky-actions">
+          <button type="button" id="run-another-btn" class="primary">
+            Check another export
+          </button>
+          <button type="button" id="back-to-check-btn" class="secondary">
+            ← Change path or profile
+          </button>
+        </div>
       </section>
     </main>
+
+    <div id="progress-overlay" class="progress-overlay hidden" aria-hidden="true">
+      <div class="progress-card">
+        <div class="progress-spinner" aria-hidden="true"></div>
+        <h3 id="progress-title">Working…</h3>
+        <p id="progress-message" class="progress-message">Please wait</p>
+        <div class="progress-bar-track" aria-hidden="true">
+          <div id="progress-bar" class="progress-bar indeterminate"></div>
+        </div>
+        <p id="progress-detail" class="progress-detail muted"></p>
+        <ol class="progress-phases" id="progress-phases">
+          <li data-phase="scan">Scanning folder</li>
+          <li data-phase="discover">Grouping packages</li>
+          <li data-phase="file">Probing &amp; validating</li>
+          <li data-phase="finish">Building report</li>
+        </ol>
+      </div>
+    </div>
 
     <script src="app.js"></script>
   </body>

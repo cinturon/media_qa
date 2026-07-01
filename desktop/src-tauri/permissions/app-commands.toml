@@ -1,0 +1,12 @@
+[[permission]]
+identifier = "allow-app-commands"
+description = "Allow Media QA Studio desktop commands"
+commands.allow = [
+  "run_local_qc",
+  "start_watch_folder",
+  "stop_watch_folder",
+  "get_watch_status",
+  "list_profiles",
+  "create_profile",
+  "delete_profile",
+]

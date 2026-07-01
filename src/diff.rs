@@ -123,6 +123,10 @@ mod tests {
                 findings: vec![],
                 suggestions: vec![],
                 error: None,
+                width: None,
+                height: None,
+                video_codec: None,
+                file_size_bytes: None,
             }],
         );
         let after = BatchReport::from_files(
@@ -138,6 +142,10 @@ mod tests {
                 }],
                 suggestions: vec![],
                 error: None,
+                width: None,
+                height: None,
+                video_codec: None,
+                file_size_bytes: None,
             }],
         );
 

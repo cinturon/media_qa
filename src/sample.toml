@@ -1,20 +1,98 @@
+# Shared defaults inherited by most delivery profiles.
 [profiles.base]
 extension = "mp4"
 require_audio = true
 min_duration_secs = 1.0
+max_duration_secs = 3600.0
 max_silence_secs = 2.0
 min_mean_volume_db = -50.0
+video_codec = "h264"
+audio_codec = "aac"
+audio_sample_rate = 48000
+audio_channels = 2
+max_integrated_lufs = -10.0
+max_true_peak_db = -1.0
+max_file_size_mb = 5000
 
-[profiles.shorts]
+# Vertical 9:16 social exports (Shorts, Reels, TikTok).
+[profiles.vertical]
 inherits = "base"
 width = 1080
 height = 1920
+
+[profiles.shorts]
+inherits = "vertical"
 require_captions = false
 require_thumbnail = false
+max_duration_secs = 60.0
 
+[profiles.instagram_reels]
+inherits = "vertical"
+require_captions = true
+require_thumbnail = true
+max_silence_secs = 1.5
+max_duration_secs = 90.0
+
+[profiles.tiktok]
+inherits = "vertical"
+max_silence_secs = 1.0
+min_mean_volume_db = -45.0
+max_duration_secs = 60.0
+
+# Long-form horizontal video.
 [profiles.youtube]
 inherits = "base"
 width = 1920
 height = 1080
 require_captions = false
 require_thumbnail = false
+
+[profiles.youtube_4k]
+inherits = "youtube"
+width = 3840
+height = 2160
+
+[profiles.vimeo]
+inherits = "base"
+width = 1920
+height = 1080
+min_mean_volume_db = -45.0
+
+# Lighter web embeds and review proxies.
+[profiles.web_embed]
+inherits = "base"
+width = 1280
+height = 720
+min_duration_secs = 0.5
+
+[profiles.client_review]
+inherits = "base"
+width = 1280
+height = 720
+require_captions = true
+require_thumbnail = true
+min_mean_volume_db = -55.0
+max_silence_secs = 3.0
+
+# Square audiogram / podcast clip exports.
+[profiles.podcast_audiogram]
+inherits = "base"
+width = 1080
+height = 1080
+require_audio = true
+min_mean_volume_db = -40.0
+
+# Broadcast-style masters.
+[profiles.broadcast_hd]
+inherits = "base"
+width = 1920
+height = 1080
+max_silence_secs = 0.5
+min_mean_volume_db = -48.0
+max_integrated_lufs = -23.0
+frame_rate = 29.97
+
+[profiles.broadcast_uhd]
+inherits = "broadcast_hd"
+width = 3840
+height = 2160

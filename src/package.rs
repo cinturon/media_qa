@@ -1,4 +1,6 @@
+use crate::captions::validate_captions;
 use crate::config::Profile;
+use crate::metadata::MediaMetadata;
 use crate::validate::{Finding, Severity};
 use std::path::{Path, PathBuf};
 
@@ -35,7 +37,11 @@ pub fn discover_packages(media_files: &[PathBuf]) -> Vec<DeliveryPackage> {
         .collect()
 }
 
-pub fn validate_package(package: &DeliveryPackage, profile: &Profile) -> Vec<Finding> {
+pub fn validate_package(
+    package: &DeliveryPackage,
+    metadata: &MediaMetadata,
+    profile: &Profile,
+) -> Vec<Finding> {
     let mut findings = Vec::new();
     let basename = package
         .video
@@ -73,6 +79,19 @@ pub fn validate_package(package: &DeliveryPackage, profile: &Profile) -> Vec<Fin
                     caption_stem, video_stem
                 ),
             });
+        } else {
+            match validate_captions(captions, metadata.duration_secs) {
+                Ok(stats) => {
+                    if stats.cue_count == 0 {
+                        findings.push(Finding {
+                            code: "CAPTIONS_EMPTY".into(),
+                            severity: Severity::Fail,
+                            message: "caption file has no cues".into(),
+                        });
+                    }
+                }
+                Err(finding) => findings.push(finding),
+            }
         }
     }
 
@@ -82,6 +101,7 @@ pub fn validate_package(package: &DeliveryPackage, profile: &Profile) -> Vec<Fin
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::Profile;
 
     #[test]
     fn validate_package_flags_missing_captions() {
@@ -91,18 +111,24 @@ mod tests {
             thumbnail: Some(PathBuf::from("clip.jpg")),
         };
         let profile = Profile {
-            extension: "mp4".into(),
+            require_captions: true,
+            ..Profile::default()
+        };
+        let metadata = MediaMetadata {
+            duration_secs: 10.0,
             width: 1920,
             height: 1080,
-            require_audio: true,
-            min_duration_secs: 1.0,
-            max_silence_secs: 2.0,
-            min_mean_volume_db: -50.0,
-            require_captions: true,
-            require_thumbnail: false,
+            has_audio: true,
+            format_name: "mp4".into(),
+            video_codec: Some("h264".into()),
+            frame_rate: Some(30.0),
+            video_bitrate_kbps: None,
+            audio_codec: Some("aac".into()),
+            audio_sample_rate: Some(48_000),
+            audio_channels: Some(2),
         };
 
-        let findings = validate_package(&package, &profile);
+        let findings = validate_package(&package, &metadata, &profile);
         assert!(findings.iter().any(|f| f.code == "CAPTIONS_MISSING"));
     }
 }

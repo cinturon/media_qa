@@ -94,7 +94,130 @@ pub fn validate(path: &Path, metadata: &MediaMetadata, profile: &Profile) -> Val
         });
     }
 
+    if let Some(max_duration) = profile.max_duration_secs {
+        if metadata.duration_secs > max_duration {
+            findings.push(Finding {
+                code: "DURATION_TOO_LONG".into(),
+                severity: Severity::Fail,
+                message: format!(
+                    "duration {:.2}s exceeds maximum {:.2}s",
+                    metadata.duration_secs, max_duration
+                ),
+            });
+        }
+    }
+
+    if let Some(expected_codec) = &profile.video_codec {
+        if let Some(actual_codec) = &metadata.video_codec {
+            if !codec_matches(actual_codec, expected_codec) {
+                findings.push(Finding {
+                    code: "VIDEO_CODEC_MISMATCH".into(),
+                    severity: Severity::Fail,
+                    message: format!(
+                        "expected video codec {expected_codec}, got {actual_codec}"
+                    ),
+                });
+            }
+        }
+    }
+
+    if let Some(expected_fps) = profile.frame_rate {
+        if let Some(actual_fps) = metadata.frame_rate {
+            if !frame_rate_matches(actual_fps, expected_fps, profile.frame_rate_tolerance) {
+                findings.push(Finding {
+                    code: "FRAME_RATE_MISMATCH".into(),
+                    severity: Severity::Fail,
+                    message: format!(
+                        "expected frame rate {:.3} fps, got {:.3} fps",
+                        expected_fps, actual_fps
+                    ),
+                });
+            }
+        }
+    }
+
+    if let Some(min_kbps) = profile.min_video_bitrate_kbps {
+        if let Some(actual_kbps) = metadata.video_bitrate_kbps {
+            if actual_kbps < min_kbps {
+                findings.push(Finding {
+                    code: "VIDEO_BITRATE_TOO_LOW".into(),
+                    severity: Severity::Warn,
+                    message: format!(
+                        "video bitrate {actual_kbps} kbps is below minimum {min_kbps} kbps"
+                    ),
+                });
+            }
+        }
+    }
+
+    if let Some(max_kbps) = profile.max_video_bitrate_kbps {
+        if let Some(actual_kbps) = metadata.video_bitrate_kbps {
+            if actual_kbps > max_kbps {
+                findings.push(Finding {
+                    code: "VIDEO_BITRATE_TOO_HIGH".into(),
+                    severity: Severity::Warn,
+                    message: format!(
+                        "video bitrate {actual_kbps} kbps exceeds maximum {max_kbps} kbps"
+                    ),
+                });
+            }
+        }
+    }
+
+    if let Some(expected_codec) = &profile.audio_codec {
+        if metadata.has_audio {
+            if let Some(actual_codec) = &metadata.audio_codec {
+                if !codec_matches(actual_codec, expected_codec) {
+                    findings.push(Finding {
+                        code: "AUDIO_CODEC_MISMATCH".into(),
+                        severity: Severity::Fail,
+                        message: format!(
+                            "expected audio codec {expected_codec}, got {actual_codec}"
+                        ),
+                    });
+                }
+            }
+        }
+    }
+
+    if let Some(expected_rate) = profile.audio_sample_rate {
+        if let Some(actual_rate) = metadata.audio_sample_rate {
+            if actual_rate != expected_rate {
+                findings.push(Finding {
+                    code: "AUDIO_SAMPLE_RATE_MISMATCH".into(),
+                    severity: Severity::Fail,
+                    message: format!(
+                        "expected audio sample rate {expected_rate} Hz, got {actual_rate} Hz"
+                    ),
+                });
+            }
+        }
+    }
+
+    if let Some(expected_channels) = profile.audio_channels {
+        if let Some(actual_channels) = metadata.audio_channels {
+            if actual_channels != expected_channels {
+                findings.push(Finding {
+                    code: "AUDIO_CHANNELS_MISMATCH".into(),
+                    severity: Severity::Warn,
+                    message: format!(
+                        "expected {expected_channels} audio channels, got {actual_channels}"
+                    ),
+                });
+            }
+        }
+    }
+
     ValidationResult::from_findings(findings)
+}
+
+fn codec_matches(actual: &str, expected: &str) -> bool {
+    actual.eq_ignore_ascii_case(expected)
+        || actual.to_ascii_lowercase().contains(&expected.to_ascii_lowercase())
+}
+
+fn frame_rate_matches(actual: f64, expected: f64, tolerance: f64) -> bool {
+    (actual - expected).abs() <= tolerance
 }
 
 #[cfg(test)]
@@ -102,17 +225,12 @@ mod tests {
     use super::*;
     use crate::metadata::MediaMetadata;
 
+    use crate::config::Profile;
+
     fn sample_profile() -> Profile {
         Profile {
-            extension: "mp4".into(),
-            width: 1920,
-            height: 1080,
-            require_audio: true,
             min_duration_secs: 5.0,
-            max_silence_secs: 2.0,
-            min_mean_volume_db: -50.0,
-            require_captions: false,
-            require_thumbnail: false,
+            ..Profile::default()
         }
     }
 
@@ -124,6 +242,11 @@ mod tests {
             has_audio: true,
             format_name: "mp4".into(),
             video_codec: Some("h264".into()),
+            frame_rate: Some(30.0),
+            video_bitrate_kbps: Some(5000),
+            audio_codec: Some("aac".into()),
+            audio_sample_rate: Some(48_000),
+            audio_channels: Some(2),
         }
     }
 

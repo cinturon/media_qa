@@ -1,17 +1,18 @@
 use mediaqa::api::{serve as serve_api, ServeOptions};
 use mediaqa::checklist::render_checklist;
-use mediaqa::config::{load_config, Profile};
+use mediaqa::config::Profile;
 use mediaqa::diff::{diff_reports, print_report_diff};
 use mediaqa::history::{load_report, save_report};
 use mediaqa::html_report::write_html_report;
 use mediaqa::pipeline::{run_batch, BatchOptions};
 use mediaqa::report::{print_batch_report, print_json_report, BatchReport};
 use mediaqa::scanner::scan;
-use mediaqa::watch::watch_folder;
+use mediaqa::watch::{watch_folder, WatchOptions};
 use mediaqa::webhook::post_webhook;
-use mediaqa::{DEFAULT_CONFIG_PATH, DEFAULT_HISTORY_DIR, DEFAULT_STUDIO_DIR};
+use mediaqa::{load_default_config, resolve_config_path, DEFAULT_HISTORY_DIR, DEFAULT_STUDIO_DIR};
 use clap::{Args, Parser, Subcommand};
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 #[derive(Parser)]
 #[command(name = "mediaqa", about = "Media QA preflight checker")]
@@ -85,6 +86,20 @@ struct WatchCommand {
     path: PathBuf,
     #[arg(long, default_value = "youtube")]
     profile: String,
+    /// Wait for file size to stop changing before running QC.
+    #[arg(long, default_value_t = 5)]
+    debounce_secs: u64,
+    /// QC media already present when the watcher starts.
+    #[arg(long)]
+    scan_existing: bool,
+    #[arg(long)]
+    json: bool,
+    #[arg(long)]
+    save: bool,
+    #[arg(long)]
+    html: Option<PathBuf>,
+    #[arg(long, default_value_t = true)]
+    parallel: bool,
 }
 
 fn main() {
@@ -95,7 +110,7 @@ fn main() {
 }
 
 fn run() -> Result<(), Box<dyn std::error::Error>> {
-    let config = load_config(Path::new(DEFAULT_CONFIG_PATH))?;
+    let config = load_default_config()?;
     let cli = Cli::parse();
 
     let exit_code = match cli.command {
@@ -115,16 +130,35 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 studio_dir: serve_cmd.studio_dir,
                 upload_dir: PathBuf::from(".mediaqa/uploads"),
                 port: serve_cmd.port,
-                config_path: PathBuf::from(DEFAULT_CONFIG_PATH),
+                config_path: resolve_config_path(),
             })?;
             0
         }
         Commands::Watch(watch) => {
+            let json = watch.json;
+            let save = watch.save;
+            let html = watch.html.clone();
             watch_folder(
                 watch.path,
                 watch.profile,
                 &config,
-                BatchOptions { parallel: true },
+                WatchOptions {
+                    debounce: Duration::from_secs(watch.debounce_secs),
+                    batch_options: BatchOptions {
+                        parallel: watch.parallel,
+                    },
+                    scan_existing: watch.scan_existing,
+                },
+                move |report| {
+                    if let Err(err) = finish_report(report, json, html.as_deref(), save, None) {
+                        eprintln!("report error: {err}");
+                    } else if !json {
+                        println!(
+                            "\n--- watch QC complete (exit {}) ---\n",
+                            report.exit_code()
+                        );
+                    }
+                },
             )?;
             0
         }

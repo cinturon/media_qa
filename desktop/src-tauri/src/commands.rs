@@ -1,20 +1,38 @@
-use mediaqa::config::load_config;
-use mediaqa::pipeline::{run_batch, BatchOptions};
+use mediaqa::pipeline::{run_multi_profile_sequential_with_progress, BatchOptions};
+use mediaqa::report::MultiProfileReport;
 use mediaqa::scanner::scan;
-use mediaqa::{DEFAULT_CONFIG_PATH, DEFAULT_STUDIO_DIR};
+use mediaqa::watch::{watch_folder_cancellable_multi, WatchOptions};
+use mediaqa::{
+    create_user_profile, delete_user_profile, list_profile_summaries, load_default_config,
+    CreateProfileInput, ProfileSummary,
+};
 use serde::{Deserialize, Serialize};
-use std::fs;
 use std::path::PathBuf;
-use std::sync::Mutex;
-use tauri::State;
-
-const API_BASE: &str = "http://127.0.0.1:8787";
-const QUEUE_PATH: &str = ".mediaqa/desktop-queue.json";
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
+use tauri::{AppHandle, Emitter, State};
 
 #[derive(Default)]
-pub struct AppContext {
-    pub session_token: Mutex<Option<String>>,
-    pub api_base: Mutex<String>,
+pub struct WatchState {
+    inner: Mutex<Option<WatchRuntime>>,
+}
+
+struct WatchRuntime {
+    cancel: Arc<AtomicBool>,
+    path: String,
+    profiles: Vec<String>,
+    debounce_secs: u64,
+    scan_existing: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WatchStatus {
+    pub active: bool,
+    pub path: Option<String>,
+    pub profiles: Vec<String>,
+    pub debounce_secs: Option<u64>,
+    pub scan_existing: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -23,211 +41,265 @@ pub struct LocalQcResult {
     pub report_json: String,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct Entitlements {
-    pub plan: String,
-    pub features: serde_json::Value,
-    pub usage: serde_json::Value,
+#[derive(Debug, Clone, Serialize)]
+pub struct QcProgressPayload {
+    pub phase: String,
+    pub message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub current: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub total: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub profile: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct OfflineAction {
-    pub id: String,
-    pub kind: String,
-    pub payload: serde_json::Value,
-    pub synced: bool,
+fn emit_qc_progress(app: &AppHandle, payload: QcProgressPayload) {
+    let _ = app.emit_to("main", "qc-progress", payload);
 }
 
 #[tauri::command]
-pub fn run_local_qc(path: String, profile: String) -> Result<LocalQcResult, String> {
-    let config = load_config(std::path::Path::new(DEFAULT_CONFIG_PATH)).map_err(|e| e.to_string())?;
-    let profile_cfg = config
-        .profiles
-        .get(&profile)
-        .cloned()
-        .ok_or_else(|| format!("Profile not found: {profile}"))?;
+pub async fn run_local_qc(
+    path: String,
+    profiles: Vec<String>,
+    app: AppHandle,
+) -> Result<LocalQcResult, String> {
+    tauri::async_runtime::spawn_blocking(move || run_local_qc_blocking(path, profiles, app))
+        .await
+        .map_err(|err| err.to_string())?
+}
+
+fn run_local_qc_blocking(
+    path: String,
+    profiles: Vec<String>,
+    app: AppHandle,
+) -> Result<LocalQcResult, String> {
+    if profiles.is_empty() {
+        return Err("Select at least one delivery profile".into());
+    }
+
+    emit_qc_progress(
+        &app,
+        QcProgressPayload {
+            phase: "scan".into(),
+            message: "Scanning folder for media files…".into(),
+            current: None,
+            total: None,
+            profile: None,
+        },
+    );
+
+    let config = load_default_config().map_err(|e| e.to_string())?;
+
     let media_files = scan(std::path::Path::new(&path)).map_err(|e| e.to_string())?;
     if media_files.is_empty() {
         return Err("No media files found".into());
     }
-    let report = run_batch(media_files, &profile_cfg, &profile, BatchOptions::default());
-    let report_json = serde_json::to_string_pretty(&report).map_err(|e| e.to_string())?;
+
+    emit_qc_progress(
+        &app,
+        QcProgressPayload {
+            phase: "scanned".into(),
+            message: format!("Found {} media file(s)", media_files.len()),
+            current: None,
+            total: Some(media_files.len()),
+            profile: None,
+        },
+    );
+
+    let app_handle = app.clone();
+    let multi = run_multi_profile_sequential_with_progress(
+        media_files,
+        &config,
+        &profiles,
+        |progress, profile_name| {
+            emit_qc_progress(
+                &app_handle,
+                QcProgressPayload {
+                    phase: progress.phase.to_string(),
+                    message: progress.message,
+                    current: if progress.total > 0 {
+                        Some(progress.current)
+                    } else {
+                        None
+                    },
+                    total: if progress.total > 0 {
+                        Some(progress.total)
+                    } else {
+                        None
+                    },
+                    profile: Some(profile_name.to_string()),
+                },
+            );
+        },
+    )?;
+
+    emit_qc_progress(
+        &app,
+        QcProgressPayload {
+            phase: "done".into(),
+            message: "Check complete".into(),
+            current: Some(multi.reports.first().map(|r| r.summary.total).unwrap_or(0)),
+            total: Some(multi.reports.first().map(|r| r.summary.total).unwrap_or(0)),
+            profile: None,
+        },
+    );
+
+    let report_json = serde_json::to_string_pretty(&multi).map_err(|e| e.to_string())?;
     Ok(LocalQcResult {
-        exit_code: report.exit_code(),
+        exit_code: multi.exit_code(),
         report_json,
     })
 }
 
+#[derive(Debug, Clone, Serialize)]
+struct WatchStatusEvent {
+    message: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct WatchReportEvent {
+    report_json: String,
+    exit_code: i32,
+    trigger: String,
+}
+
+fn emit_watch_status(app: &AppHandle, message: impl Into<String>) {
+    let _ = app.emit_to(
+        "main",
+        "watch-status",
+        WatchStatusEvent {
+            message: message.into(),
+        },
+    );
+}
+
+fn emit_watch_report(app: &AppHandle, report: &MultiProfileReport, trigger: &str) {
+    let report_json = serde_json::to_string_pretty(report).unwrap_or_else(|_| "{}".into());
+    let _ = app.emit_to(
+        "main",
+        "watch-report",
+        WatchReportEvent {
+            report_json,
+            exit_code: report.exit_code(),
+            trigger: trigger.to_string(),
+        },
+    );
+}
+
 #[tauri::command]
-pub fn login(api_token: String, state: State<'_, AppContext>) -> Result<serde_json::Value, String> {
-    let response = ureq::post(&format!("{API_BASE}/auth/login"))
-        .set("Content-Type", "application/json")
-        .send_json(serde_json::json!({ "api_token": api_token }))
-        .map_err(|e| e.to_string())?;
-    let session: serde_json::Value = response.into_json().map_err(|e| e.to_string())?;
-    if let Some(token) = session.get("token").and_then(|v| v.as_str()) {
-        *state.session_token.lock().unwrap() = Some(token.to_string());
+pub fn list_profiles() -> Result<Vec<ProfileSummary>, String> {
+    list_profile_summaries().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn create_profile(input: CreateProfileInput) -> Result<ProfileSummary, String> {
+    create_user_profile(input).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn delete_profile(name: String) -> Result<String, String> {
+    delete_user_profile(&name).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn start_watch_folder(
+    path: String,
+    profiles: Vec<String>,
+    debounce_secs: u64,
+    scan_existing: bool,
+    app: AppHandle,
+    state: State<'_, WatchState>,
+) -> Result<WatchStatus, String> {
+    if profiles.is_empty() {
+        return Err("Select at least one delivery profile".into());
     }
-    Ok(session)
-}
 
-#[tauri::command]
-pub fn list_workspaces(state: State<'_, AppContext>) -> Result<serde_json::Value, String> {
-    authed_get(state, "/workspaces")
-}
+    stop_watch_internal(&state)?;
 
-#[tauri::command]
-pub fn switch_workspace(
-    workspace_id: String,
-    state: State<'_, AppContext>,
-) -> Result<serde_json::Value, String> {
-    authed_post(
-        state,
-        "/workspaces/switch",
-        serde_json::json!({ "workspace_id": workspace_id }),
-    )
-}
+    let watch_path = PathBuf::from(&path);
+    if !watch_path.is_dir() {
+        return Err("Watch path must be an existing folder".into());
+    }
 
-#[tauri::command]
-pub fn get_entitlements(state: State<'_, AppContext>) -> Result<Entitlements, String> {
-    let plans = authed_get(state.clone(), "/plans")?;
-    let usage = authed_get(state, "/usage")?;
-    Ok(Entitlements {
-        plan: plans
-            .get("current_plan")
-            .and_then(|v| v.as_str())
-            .unwrap_or("free")
-            .to_string(),
-        features: plans
-            .get("features")
-            .cloned()
-            .unwrap_or_else(|| serde_json::json!({})),
-        usage,
-    })
-}
+    let cancel = Arc::new(AtomicBool::new(false));
+    let cancel_flag = cancel.clone();
+    let app_handle = app.clone();
+    let profile_names = profiles.clone();
 
-#[tauri::command]
-pub fn get_pricing_variant(state: State<'_, AppContext>) -> Result<serde_json::Value, String> {
-    authed_get(state, "/experiments/pricing")
-}
+    std::thread::spawn(move || {
+        let config = match load_default_config() {
+            Ok(config) => config,
+            Err(err) => {
+                emit_watch_status(&app_handle, format!("Watch failed to start: {err}"));
+                return;
+            }
+        };
 
-#[tauri::command]
-pub fn submit_remote_job(
-    upload_id: String,
-    profile: String,
-    state: State<'_, AppContext>,
-) -> Result<serde_json::Value, String> {
-    authed_post(
-        state,
-        "/jobs",
-        serde_json::json!({ "upload_id": upload_id, "profile": profile }),
-    )
-}
+        let options = WatchOptions {
+            debounce: Duration::from_secs(debounce_secs.max(1)),
+            batch_options: BatchOptions { parallel: true },
+            scan_existing,
+        };
 
-#[tauri::command]
-pub fn poll_remote_job(job_id: String, state: State<'_, AppContext>) -> Result<serde_json::Value, String> {
-    authed_get(state, &format!("/jobs/{job_id}"))
-}
-
-#[tauri::command]
-pub fn queue_offline_action(kind: String, payload: serde_json::Value) -> Result<OfflineAction, String> {
-    let mut queue = load_queue()?;
-    let action = OfflineAction {
-        id: format!("offline_{}", queue.len() + 1),
-        kind,
-        payload,
-        synced: false,
-    };
-    queue.push(action.clone());
-    save_queue(&queue)?;
-    Ok(action)
-}
-
-#[tauri::command]
-pub fn get_offline_queue() -> Result<Vec<OfflineAction>, String> {
-    load_queue()
-}
-
-#[tauri::command]
-pub fn sync_offline_queue(state: State<'_, AppContext>) -> Result<Vec<OfflineAction>, String> {
-    let mut queue = load_queue()?;
-    for action in queue.iter_mut().filter(|a| !a.synced) {
-        if action.kind == "remote_job" {
-            let upload_id = action
-                .payload
-                .get("upload_id")
-                .and_then(|v| v.as_str())
-                .unwrap_or_default();
-            let profile = action
-                .payload
-                .get("profile")
-                .and_then(|v| v.as_str())
-                .unwrap_or("youtube");
-            let _ = submit_remote_job(upload_id.to_string(), profile.to_string(), state.clone());
-            action.synced = true;
+        if let Err(err) = watch_folder_cancellable_multi(
+            watch_path,
+            profile_names,
+            &config,
+            options,
+            cancel_flag,
+            |report| emit_watch_report(&app_handle, report, "drop"),
+            |message| emit_watch_status(&app_handle, message),
+        ) {
+            emit_watch_status(&app_handle, format!("Watch error: {err}"));
         }
+    });
+
+    *state.inner.lock().unwrap() = Some(WatchRuntime {
+        cancel,
+        path,
+        profiles,
+        debounce_secs,
+        scan_existing,
+    });
+
+    Ok(current_watch_status(&state))
+}
+
+#[tauri::command]
+pub fn stop_watch_folder(state: State<'_, WatchState>) -> Result<WatchStatus, String> {
+    stop_watch_internal(&state)?;
+    Ok(current_watch_status(&state))
+}
+
+#[tauri::command]
+pub fn get_watch_status(state: State<'_, WatchState>) -> WatchStatus {
+    current_watch_status(&state)
+}
+
+fn stop_watch_internal(state: &WatchState) -> Result<(), String> {
+    let runtime = state.inner.lock().unwrap().take();
+    if let Some(runtime) = runtime {
+        runtime.cancel.store(true, Ordering::Relaxed);
     }
-    save_queue(&queue)?;
-    Ok(queue)
+    Ok(())
 }
 
-fn authed_get(state: State<'_, AppContext>, path: &str) -> Result<serde_json::Value, String> {
-    let token = session_token(&state)?;
-    let base = api_base(&state);
-    let response = ureq::get(&format!("{base}{path}"))
-        .set("Authorization", &format!("Bearer {token}"))
-        .call()
-        .map_err(|e| e.to_string())?;
-    response.into_json().map_err(|e| e.to_string())
-}
-
-fn authed_post(
-    state: State<'_, AppContext>,
-    path: &str,
-    body: serde_json::Value,
-) -> Result<serde_json::Value, String> {
-    let token = session_token(&state)?;
-    let base = api_base(&state);
-    let response = ureq::post(&format!("{base}{path}"))
-        .set("Authorization", &format!("Bearer {token}"))
-        .set("Content-Type", "application/json")
-        .send_json(body)
-        .map_err(|e| e.to_string())?;
-    response.into_json().map_err(|e| e.to_string())
-}
-
-fn session_token(state: &State<'_, AppContext>) -> Result<String, String> {
-    state
-        .session_token
-        .lock()
-        .unwrap()
-        .clone()
-        .ok_or_else(|| "Not logged in".to_string())
-}
-
-fn api_base(state: &State<'_, AppContext>) -> String {
-    let value = state.api_base.lock().unwrap().clone();
-    if value.is_empty() {
-        API_BASE.to_string()
-    } else {
-        value
+fn current_watch_status(state: &WatchState) -> WatchStatus {
+    let guard = state.inner.lock().unwrap();
+    match guard.as_ref() {
+        Some(runtime) => WatchStatus {
+            active: true,
+            path: Some(runtime.path.clone()),
+            profiles: runtime.profiles.clone(),
+            debounce_secs: Some(runtime.debounce_secs),
+            scan_existing: runtime.scan_existing,
+        },
+        None => WatchStatus {
+            active: false,
+            path: None,
+            profiles: Vec::new(),
+            debounce_secs: None,
+            scan_existing: false,
+        },
     }
 }
-
-fn load_queue() -> Result<Vec<OfflineAction>, String> {
-    let path = PathBuf::from(QUEUE_PATH);
-    if !path.exists() {
-        return Ok(Vec::new());
-    }
-    let raw = fs::read_to_string(path).map_err(|e| e.to_string())?;
-    serde_json::from_str(&raw).map_err(|e| e.to_string())
-}
-
-fn save_queue(queue: &[OfflineAction]) -> Result<(), String> {
-    fs::create_dir_all(".mediaqa").map_err(|e| e.to_string())?;
-    let raw = serde_json::to_string_pretty(queue).map_err(|e| e.to_string())?;
-    fs::write(QUEUE_PATH, raw).map_err(|e| e.to_string())
-}
-
-// Seed note for studio store path constant usage in docs
-const _STUDIO_DIR: &str = DEFAULT_STUDIO_DIR;

@@ -1,23 +1,19 @@
 mod commands;
 
-use commands::AppContext;
+use commands::WatchState;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .manage(AppContext::default())
+        .manage(WatchState::default())
         .invoke_handler(tauri::generate_handler![
             commands::run_local_qc,
-            commands::login,
-            commands::list_workspaces,
-            commands::switch_workspace,
-            commands::get_entitlements,
-            commands::get_pricing_variant,
-            commands::submit_remote_job,
-            commands::poll_remote_job,
-            commands::queue_offline_action,
-            commands::sync_offline_queue,
-            commands::get_offline_queue,
+            commands::start_watch_folder,
+            commands::stop_watch_folder,
+            commands::get_watch_status,
+            commands::list_profiles,
+            commands::create_profile,
+            commands::delete_profile,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Media QA Studio desktop app");

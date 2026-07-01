@@ -1,1 +1,1 @@
-{}
+{"default":{"identifier":"default","description":"Main window access to QC commands and Tauri core APIs","local":true,"windows":["main"],"permissions":["core:default","allow-app-commands"]}}

@@ -15,7 +15,7 @@ pub fn scan(path: &Path) -> Result<Vec<PathBuf>, Box<dyn std::error::Error>> {
     Ok(entries)
 }
 
-fn is_media_candidate(path: &Path) -> bool {
+pub fn is_media_candidate(path: &Path) -> bool {
     path.extension()
         .and_then(|ext| ext.to_str())
         .is_some_and(|ext| MEDIA_EXTENSIONS.contains(&ext))

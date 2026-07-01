@@ -33,7 +33,7 @@ impl Default for ServeOptions {
             studio_dir: PathBuf::from(crate::DEFAULT_STUDIO_DIR),
             upload_dir: PathBuf::from(".mediaqa/uploads"),
             port: 8787,
-            config_path: PathBuf::from(crate::DEFAULT_CONFIG_PATH),
+            config_path: crate::config::resolve_config_path(),
         }
     }
 }

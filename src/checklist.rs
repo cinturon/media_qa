@@ -50,17 +50,7 @@ mod tests {
 
     #[test]
     fn checklist_includes_resolution() {
-        let profile = Profile {
-            extension: "mp4".into(),
-            width: 1920,
-            height: 1080,
-            require_audio: true,
-            min_duration_secs: 5.0,
-            max_silence_secs: 2.0,
-            min_mean_volume_db: -50.0,
-            require_captions: false,
-            require_thumbnail: false,
-        };
+        let profile = Profile::default();
         let text = render_checklist("youtube", &profile);
         assert!(text.contains("1920x1080"));
     }
