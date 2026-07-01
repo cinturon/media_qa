@@ -1,13 +1,20 @@
-[profiles.shorts]
+[profiles.base]
 extension = "mp4"
+require_audio = true
+min_duration_secs = 1.0
+max_silence_secs = 2.0
+min_mean_volume_db = -50.0
+
+[profiles.shorts]
+inherits = "base"
 width = 1080
 height = 1920
-require_audio = true
-min_duration_secs = 1.0
+require_captions = false
+require_thumbnail = false
 
 [profiles.youtube]
-extension = "mp4"
+inherits = "base"
 width = 1920
 height = 1080
-require_audio = true
-min_duration_secs = 1.0
+require_captions = false
+require_thumbnail = false

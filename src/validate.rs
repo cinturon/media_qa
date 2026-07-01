@@ -1,16 +1,16 @@
 use crate::config::Profile;
 use crate::metadata::MediaMetadata;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::path::Path;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Severity {
     Warn,
     Fail,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Status {
     Pass,
@@ -18,9 +18,9 @@ pub enum Status {
     Fail,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Finding {
-    pub code: &'static str,
+    pub code: String,
     pub severity: Severity,
     pub message: String,
 }
@@ -58,7 +58,7 @@ pub fn validate(path: &Path, metadata: &MediaMetadata, profile: &Profile) -> Val
 
     if !extension.eq_ignore_ascii_case(&profile.extension) {
         findings.push(Finding {
-            code: "EXTENSION_MISMATCH",
+            code: "EXTENSION_MISMATCH".into(),
             severity: Severity::Fail,
             message: format!("expected .{}, got .{}", profile.extension, extension),
         });
@@ -66,7 +66,7 @@ pub fn validate(path: &Path, metadata: &MediaMetadata, profile: &Profile) -> Val
 
     if metadata.width != profile.width || metadata.height != profile.height {
         findings.push(Finding {
-            code: "RESOLUTION_MISMATCH",
+            code: "RESOLUTION_MISMATCH".into(),
             severity: Severity::Fail,
             message: format!(
                 "expected {}x{}, got {}x{}",
@@ -77,7 +77,7 @@ pub fn validate(path: &Path, metadata: &MediaMetadata, profile: &Profile) -> Val
 
     if profile.require_audio && !metadata.has_audio {
         findings.push(Finding {
-            code: "AUDIO_REQUIRED",
+            code: "AUDIO_REQUIRED".into(),
             severity: Severity::Fail,
             message: "profile requires an audio track".into(),
         });
@@ -85,7 +85,7 @@ pub fn validate(path: &Path, metadata: &MediaMetadata, profile: &Profile) -> Val
 
     if metadata.duration_secs < profile.min_duration_secs {
         findings.push(Finding {
-            code: "DURATION_TOO_SHORT",
+            code: "DURATION_TOO_SHORT".into(),
             severity: Severity::Fail,
             message: format!(
                 "duration {:.2}s is below minimum {:.2}s",
@@ -109,6 +109,10 @@ mod tests {
             height: 1080,
             require_audio: true,
             min_duration_secs: 5.0,
+            max_silence_secs: 2.0,
+            min_mean_volume_db: -50.0,
+            require_captions: false,
+            require_thumbnail: false,
         }
     }
 
