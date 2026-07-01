@@ -1,0 +1,110 @@
+:root {
+  color-scheme: dark;
+  font-family: "SF Pro Text", system-ui, sans-serif;
+  background: #11151c;
+  color: #e8edf5;
+}
+
+body {
+  margin: 0;
+  padding: 24px;
+}
+
+header h1 {
+  margin: 0;
+}
+
+.subtitle {
+  color: #9aa7bd;
+}
+
+.steps {
+  display: flex;
+  gap: 8px;
+  margin: 20px 0;
+}
+
+.step,
+button {
+  background: #243044;
+  color: inherit;
+  border: 1px solid #3a4c68;
+  border-radius: 8px;
+  padding: 8px 12px;
+  cursor: pointer;
+}
+
+.step.active {
+  background: #2d6cdf;
+  border-color: #2d6cdf;
+}
+
+.panel {
+  display: none;
+  background: #171d27;
+  border: 1px solid #2a3548;
+  border-radius: 12px;
+  padding: 20px;
+}
+
+.panel.active {
+  display: block;
+}
+
+label {
+  display: block;
+  margin: 12px 0;
+}
+
+input,
+select {
+  width: 100%;
+  margin-top: 6px;
+  padding: 10px;
+  border-radius: 8px;
+  border: 1px solid #33415a;
+  background: #0f141d;
+  color: inherit;
+}
+
+.card,
+.banner {
+  margin-top: 16px;
+  padding: 12px;
+  border-radius: 8px;
+  background: #101722;
+  border: 1px solid #2c3950;
+}
+
+.muted {
+  color: #9aa7bd;
+}
+
+.banner {
+  background: #3a2410;
+  border-color: #8a5a18;
+}
+
+.hidden {
+  display: none;
+}
+
+#results-output {
+  white-space: pre-wrap;
+  background: #0d121a;
+  border-radius: 8px;
+  padding: 16px;
+  min-height: 240px;
+}
+
+.fail {
+  color: #ff8f8f;
+}
+
+.warn {
+  color: #ffd27d;
+}
+
+.pass {
+  color: #8ce4a0;
+}

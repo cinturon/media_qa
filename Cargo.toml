@@ -1,7 +1,11 @@
 [package]
 name = "mediaqa"
 version = "0.1.0"
-edition = "2024"
+edition = "2021"
+
+[lib]
+name = "mediaqa"
+path = "src/lib.rs"
 
 [dependencies]
 chrono = { version = "0.4", features = ["serde"] }
@@ -17,3 +21,6 @@ walkdir = "2.5.0"
 [[bin]]
 name = "mediaqa"
 path = "src/main.rs"
+
+[workspace]
+members = ["desktop/src-tauri"]

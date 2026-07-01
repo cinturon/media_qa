@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Media QA Studio</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header>
+      <h1>Media QA Studio</h1>
+      <p class="subtitle">Operator desk for delivery QC</p>
+    </header>
+
+    <nav class="steps">
+      <button class="step active" data-step="login">1. Sign in</button>
+      <button class="step" data-step="intake">2. Intake</button>
+      <button class="step" data-step="queue">3. Queue</button>
+      <button class="step" data-step="results">4. Results</button>
+    </nav>
+
+    <main>
+      <section id="login" class="panel active">
+        <h2>Sign in</h2>
+        <label>API token <input id="api-token" value="demo-token-change-me" /></label>
+        <button id="login-btn">Sign in</button>
+        <label>Workspace
+          <select id="workspace-select"></select>
+        </label>
+        <button id="switch-workspace-btn">Switch workspace</button>
+        <div id="entitlements" class="card"></div>
+        <div id="pricing-variant" class="card muted"></div>
+      </section>
+
+      <section id="intake" class="panel">
+        <h2>Intake</h2>
+        <label>Folder or file path <input id="qc-path" placeholder="/path/to/export" /></label>
+        <label>Profile
+          <select id="profile-select">
+            <option value="youtube">youtube</option>
+            <option value="shorts">shorts</option>
+          </select>
+        </label>
+        <button id="run-local-btn">Run local QC</button>
+        <button id="queue-remote-btn">Queue remote job (offline)</button>
+      </section>
+
+      <section id="queue" class="panel">
+        <h2>Queue</h2>
+        <button id="sync-queue-btn">Sync offline queue</button>
+        <ul id="offline-queue"></ul>
+      </section>
+
+      <section id="results" class="panel">
+        <h2>Review</h2>
+        <div id="upgrade-banner" class="banner hidden"></div>
+        <pre id="results-output">Run a check to see findings, review state, and fix suggestions.</pre>
+      </section>
+    </main>
+
+    <script src="app.js"></script>
+  </body>
+</html>

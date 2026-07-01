@@ -1,37 +1,17 @@
-mod analyze;
-mod api;
-mod checklist;
-mod checks;
-mod config;
-mod diff;
-mod history;
-mod html_report;
-mod metadata;
-mod package;
-mod pipeline;
-mod probe;
-mod report;
-mod scanner;
-mod suggestions;
-mod validate;
-mod watch;
-mod webhook;
-
+use mediaqa::api::{serve as serve_api, ServeOptions};
+use mediaqa::checklist::render_checklist;
+use mediaqa::config::{load_config, Profile};
+use mediaqa::diff::{diff_reports, print_report_diff};
+use mediaqa::history::{load_report, save_report};
+use mediaqa::html_report::write_html_report;
+use mediaqa::pipeline::{run_batch, BatchOptions};
+use mediaqa::report::{print_batch_report, print_json_report, BatchReport};
+use mediaqa::scanner::scan;
+use mediaqa::watch::watch_folder;
+use mediaqa::webhook::post_webhook;
+use mediaqa::{DEFAULT_CONFIG_PATH, DEFAULT_HISTORY_DIR, DEFAULT_STUDIO_DIR};
 use clap::{Args, Parser, Subcommand};
-use checklist::render_checklist;
-use config::{load_config, Profile};
-use diff::{diff_reports, print_report_diff};
-use history::{load_report, save_report};
-use html_report::write_html_report;
-use pipeline::{run_batch, BatchOptions};
-use report::{print_batch_report, print_json_report, BatchReport};
-use scanner::scan;
 use std::path::{Path, PathBuf};
-use watch::watch_folder;
-use webhook::post_webhook;
-
-const CONFIG_PATH: &str = "src/sample.toml";
-const HISTORY_DIR: &str = ".mediaqa/history";
 
 #[derive(Parser)]
 #[command(name = "mediaqa", about = "Media QA preflight checker")]
@@ -94,8 +74,10 @@ struct DiffCommand {
 struct ServeCommand {
     #[arg(long, default_value_t = 8787)]
     port: u16,
-    #[arg(long, default_value = HISTORY_DIR)]
+    #[arg(long, default_value = DEFAULT_HISTORY_DIR)]
     history_dir: PathBuf,
+    #[arg(long, default_value = DEFAULT_STUDIO_DIR)]
+    studio_dir: PathBuf,
 }
 
 #[derive(Args)]
@@ -113,7 +95,7 @@ fn main() {
 }
 
 fn run() -> Result<(), Box<dyn std::error::Error>> {
-    let config = load_config(Path::new(CONFIG_PATH))?;
+    let config = load_config(Path::new(DEFAULT_CONFIG_PATH))?;
     let cli = Cli::parse();
 
     let exit_code = match cli.command {
@@ -127,8 +109,14 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             run_diff(diff)?;
             0
         }
-        Commands::Serve(serve) => {
-            api::serve(&serve.history_dir, serve.port)?;
+        Commands::Serve(serve_cmd) => {
+            serve_api(ServeOptions {
+                history_dir: serve_cmd.history_dir,
+                studio_dir: serve_cmd.studio_dir,
+                upload_dir: PathBuf::from(".mediaqa/uploads"),
+                port: serve_cmd.port,
+                config_path: PathBuf::from(DEFAULT_CONFIG_PATH),
+            })?;
             0
         }
         Commands::Watch(watch) => {
@@ -146,7 +134,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn run_check(
-    config: &config::AppConfig,
+    config: &mediaqa::config::AppConfig,
     check: CheckCommand,
 ) -> Result<i32, Box<dyn std::error::Error>> {
     if !check.path.exists() {
@@ -165,12 +153,18 @@ fn run_check(
         parallel: check.parallel,
     };
     let report = run_batch(media_files, &profile, &check.profile, options);
-    finish_report(&report, check.json, check.html.as_deref(), check.save, check.webhook.as_deref())?;
+    finish_report(
+        &report,
+        check.json,
+        check.html.as_deref(),
+        check.save,
+        check.webhook.as_deref(),
+    )?;
     Ok(report.exit_code())
 }
 
 fn run_probe(
-    config: &config::AppConfig,
+    config: &mediaqa::config::AppConfig,
     probe: ProbeCommand,
 ) -> Result<i32, Box<dyn std::error::Error>> {
     if !probe.path.exists() {
@@ -193,7 +187,7 @@ fn run_probe(
 }
 
 fn run_checklist(
-    config: &config::AppConfig,
+    config: &mediaqa::config::AppConfig,
     checklist: ChecklistCommand,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let profile = load_profile(config, &checklist.profile)?;
@@ -232,7 +226,7 @@ fn finish_report(
     }
 
     if save {
-        let stored = save_report(report, Path::new(HISTORY_DIR))?;
+        let stored = save_report(report, Path::new(DEFAULT_HISTORY_DIR))?;
         println!("Saved report {}", stored.id);
     }
 
@@ -245,7 +239,7 @@ fn finish_report(
 }
 
 fn load_profile(
-    config: &config::AppConfig,
+    config: &mediaqa::config::AppConfig,
     name: &str,
 ) -> Result<Profile, Box<dyn std::error::Error>> {
     config
