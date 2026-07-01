@@ -1,30 +1,55 @@
+use crate::suggestions::{suggestions_for_findings, FixSuggestion};
 use crate::validate::{Finding, Status, status_from_findings};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ReviewState {
+    Pass,
+    Warn,
+    NeedsHumanAttention,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FileReport {
     pub path: PathBuf,
     pub status: Status,
+    pub review_state: ReviewState,
     pub findings: Vec<Finding>,
+    pub suggestions: Vec<FixSuggestion>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct BatchSummary {
     pub total: usize,
     pub passed: usize,
     pub warned: usize,
     pub failed: usize,
     pub errors: usize,
+    pub needs_human_attention: usize,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct BatchReport {
     pub profile: String,
     pub files: Vec<FileReport>,
     pub summary: BatchSummary,
+}
+
+impl FileReport {
+    pub fn error(path: PathBuf, error: String) -> Self {
+        Self {
+            path,
+            status: Status::Fail,
+            review_state: ReviewState::NeedsHumanAttention,
+            findings: vec![],
+            suggestions: vec![],
+            error: Some(error),
+        }
+    }
 }
 
 impl BatchReport {
@@ -33,6 +58,7 @@ impl BatchReport {
         let mut warned = 0;
         let mut failed = 0;
         let mut errors = 0;
+        let mut needs_human_attention = 0;
 
         for file in &files {
             if file.error.is_some() {
@@ -42,6 +68,9 @@ impl BatchReport {
                 Status::Pass => passed += 1,
                 Status::Warn => warned += 1,
                 Status::Fail => failed += 1,
+            }
+            if file.review_state == ReviewState::NeedsHumanAttention {
+                needs_human_attention += 1;
             }
         }
 
@@ -53,6 +82,7 @@ impl BatchReport {
                 warned,
                 failed,
                 errors,
+                needs_human_attention,
             },
             files,
         }
@@ -82,11 +112,25 @@ pub fn file_report_from_findings(
     findings: Vec<Finding>,
     error: Option<String>,
 ) -> FileReport {
+    let status = status_from_findings(&findings);
+    let review_state = review_state_from(status);
+    let suggestions = suggestions_for_findings(&findings);
+
     FileReport {
         path,
-        status: status_from_findings(&findings),
+        status,
+        review_state,
         findings,
+        suggestions,
         error,
+    }
+}
+
+pub fn review_state_from(status: Status) -> ReviewState {
+    match status {
+        Status::Pass => ReviewState::Pass,
+        Status::Warn => ReviewState::Warn,
+        Status::Fail => ReviewState::NeedsHumanAttention,
     }
 }
 
@@ -109,22 +153,33 @@ pub fn print_batch_report(report: &BatchReport) {
     println!("  warned: {}", report.summary.warned);
     println!("  failed: {}", report.summary.failed);
     println!("  errors: {}", report.summary.errors);
+    println!(
+        "  needs human attention: {}",
+        report.summary.needs_human_attention
+    );
     println!("  overall: {:?}", report.overall_status());
 }
 
 fn print_file_status(file: &FileReport) {
     println!("  status: {:?}", file.status);
+    println!("  review: {:?}", file.review_state);
 
     if file.findings.is_empty() {
         println!("  no findings");
-        return;
+    } else {
+        for finding in &file.findings {
+            println!(
+                "  [{:?}] {}: {}",
+                finding.severity, finding.code, finding.message
+            );
+        }
     }
 
-    for finding in &file.findings {
-        println!(
-            "  [{:?}] {}: {}",
-            finding.severity, finding.code, finding.message
-        );
+    if !file.suggestions.is_empty() {
+        println!("  suggestions:");
+        for suggestion in &file.suggestions {
+            println!("    - {}: {}", suggestion.code, suggestion.suggestion);
+        }
     }
 }
 
@@ -146,23 +201,29 @@ mod tests {
             FileReport {
                 path: PathBuf::from("a.mp4"),
                 status: Status::Pass,
+                review_state: ReviewState::Pass,
                 findings: vec![],
+                suggestions: vec![],
                 error: None,
             },
             FileReport {
                 path: PathBuf::from("b.mp4"),
                 status: Status::Fail,
+                review_state: ReviewState::NeedsHumanAttention,
                 findings: vec![Finding {
-                    code: "RESOLUTION_MISMATCH",
+                    code: "RESOLUTION_MISMATCH".into(),
                     severity: Severity::Fail,
                     message: "bad".into(),
                 }],
+                suggestions: vec![],
                 error: None,
             },
             FileReport {
                 path: PathBuf::from("c.mp4"),
                 status: Status::Fail,
+                review_state: ReviewState::NeedsHumanAttention,
                 findings: vec![],
+                suggestions: vec![],
                 error: Some("probe failed".into()),
             },
         ];
@@ -172,6 +233,7 @@ mod tests {
         assert_eq!(report.summary.passed, 1);
         assert_eq!(report.summary.failed, 2);
         assert_eq!(report.summary.errors, 1);
+        assert_eq!(report.summary.needs_human_attention, 2);
         assert_eq!(report.overall_status(), Status::Fail);
         assert_eq!(report.exit_code(), 1);
     }
@@ -181,16 +243,30 @@ mod tests {
         let files = vec![FileReport {
             path: PathBuf::from("a.mp4"),
             status: Status::Warn,
+            review_state: ReviewState::Warn,
             findings: vec![Finding {
-                code: "BLACK_FRAMES",
+                code: "BLACK_FRAMES".into(),
                 severity: Severity::Warn,
                 message: "black detected".into(),
             }],
+            suggestions: vec![],
             error: None,
         }];
 
         let report = BatchReport::from_files("youtube".into(), files);
         assert_eq!(report.overall_status(), Status::Warn);
         assert_eq!(report.exit_code(), 2);
+    }
+
+    #[test]
+    fn file_report_includes_suggestions() {
+        let findings = vec![Finding {
+            code: "AUDIO_REQUIRED".into(),
+            severity: Severity::Fail,
+            message: "missing".into(),
+        }];
+        let report = file_report_from_findings(PathBuf::from("clip.mp4"), findings, None);
+        assert_eq!(report.review_state, ReviewState::NeedsHumanAttention);
+        assert!(!report.suggestions.is_empty());
     }
 }

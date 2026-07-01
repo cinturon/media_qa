@@ -1,0 +1,31 @@
+{
+  "profile": "youtube",
+  "files": [
+    {
+      "path": "examples/test_video.mp4",
+      "status": "fail",
+      "review_state": "needs_human_attention",
+      "findings": [
+        {
+          "code": "RESOLUTION_MISMATCH",
+          "severity": "fail",
+          "message": "expected 1920x1080, got 320x192"
+        }
+      ],
+      "suggestions": [
+        {
+          "code": "RESOLUTION_MISMATCH",
+          "suggestion": "Re-export at the profile resolution before delivery."
+        }
+      ]
+    }
+  ],
+  "summary": {
+    "total": 1,
+    "passed": 0,
+    "warned": 0,
+    "failed": 1,
+    "errors": 0,
+    "needs_human_attention": 1
+  }
+}
