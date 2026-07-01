@@ -2,7 +2,7 @@ use clap::{Args, Parser, Subcommand};
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::convert::TryFrom;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use serde_json::from_slice;
 use walkdir::WalkDir;
@@ -30,6 +30,8 @@ pub struct CheckCommand {
 #[derive(Args)]
 pub struct ProbeCommand {
     pub path: PathBuf,
+    #[arg(long, default_value = "youtube")]
+    pub profile: String,
 }
 
 #[derive(Deserialize)]
@@ -37,12 +39,53 @@ pub struct AppConfig {
     pub profiles: HashMap<String, Profile>,
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize)]
 pub struct Profile {
     pub extension: String,
     pub width: u32,
     pub height: u32,
     pub require_audio: bool,
+    pub min_duration_secs: f64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Severity {
+    Warn,
+    Fail,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Status {
+    Pass,
+    Warn,
+    Fail,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Finding {
+    pub code: &'static str,
+    pub severity: Severity,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ValidationResult {
+    pub findings: Vec<Finding>,
+    pub status: Status,
+}
+
+impl ValidationResult {
+    pub fn from_findings(findings: Vec<Finding>) -> Self {
+        let status = if findings.iter().any(|f| f.severity == Severity::Fail) {
+            Status::Fail
+        } else if findings.iter().any(|f| f.severity == Severity::Warn) {
+            Status::Warn
+        } else {
+            Status::Pass
+        };
+
+        Self { findings, status }
+    }
 }
 
 #[derive(Deserialize)]
@@ -126,25 +169,37 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             if !check_command.path.exists() {
                 eprintln!("Path does not exist: {}", check_command.path.display());
                 return Err("Path does not exist".into());
-            } else {
-                println!("Path exists: {}", check_command.path.display());
             }
 
             let profile = config
                 .profiles
                 .get(check_command.profile.as_str())
-                .ok_or("Profile not found")?;
-            println!("Loaded profile: {}x{}", profile.width, profile.height);
+                .ok_or("Profile not found")?
+                .clone();
 
             let media_files = scan_directory(check_command.path)?;
 
             if media_files.is_empty() {
                 println!("No media files found");
                 return Ok(());
-            } else {
-                println!("Found {} media files", media_files.len());
-                for file in media_files {
-                    println!("Candidate media file: {}", file.display());
+            }
+
+            println!(
+                "Checking {} file(s) against profile '{}'",
+                media_files.len(),
+                check_command.profile
+            );
+
+            for file in media_files {
+                println!("\n{}", file.display());
+                match probe_media(file.clone()) {
+                    Ok(metadata) => {
+                        let result = validate(&file, &metadata, &profile);
+                        print_validation_result(&result);
+                    }
+                    Err(err) => {
+                        eprintln!("  probe error: {err}");
+                    }
                 }
             }
         }
@@ -152,12 +207,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             if !probe_command.path.exists() {
                 eprintln!("Path does not exist: {}", probe_command.path.display());
                 return Err("Path does not exist".into());
-            } else {
-                println!("Path exists: {}", probe_command.path.display());
             }
 
-            let metadata = probe_media(probe_command.path)?;
-            println!("Media metadata: {:?}", metadata);
+            if !probe_command.path.is_file() {
+                eprintln!("Probe requires a file path: {}", probe_command.path.display());
+                return Err("Probe requires a file path".into());
+            }
+
+            let profile = config
+                .profiles
+                .get(probe_command.profile.as_str())
+                .ok_or("Profile not found")?
+                .clone();
+
+            let metadata = probe_media(probe_command.path.clone())?;
+            println!("Media metadata: {metadata:?}");
+
+            let result = validate(&probe_command.path, &metadata, &profile);
+            print_validation_result(&result);
         }
     }
     Ok(())
@@ -201,4 +268,164 @@ fn probe_media(path: PathBuf) -> Result<MediaMetadata, Box<dyn std::error::Error
     let metadata = MediaMetadata::try_from(raw_output)?;
 
     Ok(metadata)
+}
+
+fn validate(path: &Path, metadata: &MediaMetadata, profile: &Profile) -> ValidationResult {
+    let mut findings = Vec::new();
+
+    let extension = path
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .unwrap_or("");
+
+    if !extension.eq_ignore_ascii_case(&profile.extension) {
+        findings.push(Finding {
+            code: "EXTENSION_MISMATCH",
+            severity: Severity::Fail,
+            message: format!(
+                "expected .{}, got .{}",
+                profile.extension, extension
+            ),
+        });
+    }
+
+    if metadata.width != profile.width || metadata.height != profile.height {
+        findings.push(Finding {
+            code: "RESOLUTION_MISMATCH",
+            severity: Severity::Fail,
+            message: format!(
+                "expected {}x{}, got {}x{}",
+                profile.width, profile.height, metadata.width, metadata.height
+            ),
+        });
+    }
+
+    if profile.require_audio && !metadata.has_audio {
+        findings.push(Finding {
+            code: "AUDIO_REQUIRED",
+            severity: Severity::Fail,
+            message: "profile requires an audio track".into(),
+        });
+    }
+
+    if metadata.duration_secs < profile.min_duration_secs {
+        findings.push(Finding {
+            code: "DURATION_TOO_SHORT",
+            severity: Severity::Fail,
+            message: format!(
+                "duration {:.2}s is below minimum {:.2}s",
+                metadata.duration_secs, profile.min_duration_secs
+            ),
+        });
+    }
+
+    ValidationResult::from_findings(findings)
+}
+
+fn print_validation_result(result: &ValidationResult) {
+    println!("  status: {:?}", result.status);
+
+    if result.findings.is_empty() {
+        println!("  no findings");
+        return;
+    }
+
+    for finding in &result.findings {
+        println!(
+            "  [{}] {}: {}",
+            format!("{:?}", finding.severity).to_lowercase(),
+            finding.code,
+            finding.message
+        );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn sample_profile() -> Profile {
+        Profile {
+            extension: "mp4".into(),
+            width: 1920,
+            height: 1080,
+            require_audio: true,
+            min_duration_secs: 5.0,
+        }
+    }
+
+    fn sample_metadata() -> MediaMetadata {
+        MediaMetadata {
+            duration_secs: 10.0,
+            width: 1920,
+            height: 1080,
+            has_audio: true,
+            format_name: "mp4".into(),
+            video_codec: Some("h264".into()),
+        }
+    }
+
+    #[test]
+    fn validate_passes_when_metadata_matches_profile() {
+        let path = Path::new("clip.mp4");
+        let result = validate(path, &sample_metadata(), &sample_profile());
+
+        assert_eq!(result.status, Status::Pass);
+        assert!(result.findings.is_empty());
+    }
+
+    #[test]
+    fn validate_flags_extension_mismatch() {
+        let path = Path::new("clip.mov");
+        let result = validate(path, &sample_metadata(), &sample_profile());
+
+        assert_eq!(result.status, Status::Fail);
+        assert!(result
+            .findings
+            .iter()
+            .any(|f| f.code == "EXTENSION_MISMATCH"));
+    }
+
+    #[test]
+    fn validate_flags_resolution_mismatch() {
+        let path = Path::new("clip.mp4");
+        let mut metadata = sample_metadata();
+        metadata.width = 1280;
+        metadata.height = 720;
+
+        let result = validate(path, &metadata, &sample_profile());
+
+        assert_eq!(result.status, Status::Fail);
+        assert!(result
+            .findings
+            .iter()
+            .any(|f| f.code == "RESOLUTION_MISMATCH"));
+    }
+
+    #[test]
+    fn validate_flags_missing_required_audio() {
+        let path = Path::new("clip.mp4");
+        let mut metadata = sample_metadata();
+        metadata.has_audio = false;
+
+        let result = validate(path, &metadata, &sample_profile());
+
+        assert_eq!(result.status, Status::Fail);
+        assert!(result.findings.iter().any(|f| f.code == "AUDIO_REQUIRED"));
+    }
+
+    #[test]
+    fn validate_flags_short_duration() {
+        let path = Path::new("clip.mp4");
+        let mut metadata = sample_metadata();
+        metadata.duration_secs = 2.0;
+
+        let result = validate(path, &metadata, &sample_profile());
+
+        assert_eq!(result.status, Status::Fail);
+        assert!(result
+            .findings
+            .iter()
+            .any(|f| f.code == "DURATION_TOO_SHORT"));
+    }
 }
