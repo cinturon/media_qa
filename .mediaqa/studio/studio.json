@@ -1,0 +1,46 @@
+{
+  "users": [
+    {
+      "id": "operator-mediaqa-local",
+      "email": "operator@mediaqa.local",
+      "api_token": "demo-token-change-me"
+    }
+  ],
+  "workspaces": [
+    {
+      "id": "demo-studio",
+      "name": "Demo Studio",
+      "plan": "pro",
+      "retention_days": 30
+    }
+  ],
+  "sessions": [
+    {
+      "token": "sess_operator-mediaqa-local_demo-studio",
+      "user_id": "operator-mediaqa-local",
+      "workspace_id": "demo-studio"
+    }
+  ],
+  "invites": [],
+  "uploads": [],
+  "jobs": [],
+  "usage": {
+    "runs_this_month": 0,
+    "storage_bytes": 0,
+    "events": []
+  },
+  "experiments": {
+    "variants": [
+      {
+        "id": "control",
+        "headline": "Pro at $29/mo",
+        "cta": "Start Pro trial"
+      },
+      {
+        "id": "annual_discount",
+        "headline": "Pro annual — 2 months free",
+        "cta": "Save with annual"
+      }
+    ]
+  }
+}
